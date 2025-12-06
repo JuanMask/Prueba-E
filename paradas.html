@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <title>Paradas</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="icon" href="IMG/camion.svg" type="image/svg+xml">
+
+  <style>
+    :root{--truck-size:120px}
+
+    body{
+        min-height:100vh;
+        margin-top:0;
+        position:relative;
+        overflow-x:hidden;
+        background: #fdfd96;
+    }
+
+    header.topbar{
+      position:sticky;
+      top:0;
+      background:#84b6f4;
+      z-index:20;
+      display:flex;
+      align-items:center;
+      gap:1rem;
+      padding:0.5rem 1rem;
+      box-shadow:0 2px 6px rgba(0,0,0,.1);
+    }
+
+    #truckWrap{
+      position:fixed;
+      top:60px;
+      left:50%;
+      transform:translateX(-50%);
+      width:var(--truck-size);
+      height:var(--truck-size);
+      z-index:15;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    #truck{
+      width:100%; height:100%; object-fit:contain; will-change:transform;
+    }
+
+    .content{padding-top:140px;}
+
+    .parada{
+      height:100vh; display:flex; align-items:center; justify-content:center;
+      position:relative;
+    }
+
+    .parada img{
+      max-width:300px; width:50vw; height:auto;
+      border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.15);
+    }
+
+    .parada .label{
+      position:absolute;
+      top:200px;
+      left:200px;
+      background:#fdcae1;
+      border-radius:6px;
+    }
+
+    .btnp{
+        background: #ff6961;
+    }
+
+    .ver-btn{
+      position:fixed;
+      right:100px;
+      bottom:350px;
+      z-index:25;
+      display:none;
+      background: #77dd77;
+    }
+
+    .overlay{
+      position:fixed; inset:0; display:flex; align-items:center;
+      justify-content:center; z-index:50; background:rgba(0,0,0,.6);
+    }
+
+    /* choice container: relative so NO se mueva dentro de este contenedor */
+    .choice-wrap{
+      display:flex; gap:1rem; align-items:center; justify-content:center;
+      position:relative; /* importante */
+      min-width:260px;
+      min-height:80px;
+      padding:12px;
+    }
+
+    /* make buttons visually consistent; NO será posicionado absolute cuando se mueva */
+    .choice-wrap button{ /* SI se queda estático por defecto */ 
+      position:relative;
+    }
+
+    /* asegurar que cuando NO se vuelve absolute no salga del card */
+    .overlay .card{ max-width:600px; margin:1rem; }
+
+
+
+    /* Animación de pulso */
+    @keyframes pulse {
+        0%   { transform: scale(1); }
+        50%  { transform: scale(1.12); }
+        100% { transform: scale(1); }
+    }
+
+        /* Para aplicar al botón */
+    .pulse-btn {
+        animation: pulse 1.4s ease-in-out infinite;
+    }
+
+  </style>
+</head>
+
+<body>
+
+  <header class="topbar">
+    <img src="IMG/camion.svg" id="truckHeaderImg" alt="camion" style="height:48px; object-fit:contain">
+    <button id="arrancarBtn" class="btn btnp btn-success pulse-btn">ARRANCAR</button>
+    <audio id="cancion" src="AUDIO/locos.mp3"></audio>
+  </header>
+
+  <div id="truckWrap">
+    <img id="truck" src="IMG/camion.svg" alt="Camión">
+  </div>
+
+  <main class="content">
+    <section id="p1" class="parada" data-index="1">
+      <span class="label">PARADA 1</span>
+      <img src="IMG/parada1.svg" alt="Parada 1">
+    </section>
+
+    <section id="p2" class="parada" data-index="2">
+      <span class="label">PARADA 2</span>
+      <img src="IMG/parada2.svg" alt="Parada 2">
+    </section>
+
+    <section id="p3" class="parada" data-index="3">
+      <span class="label">PARADA 3</span>
+      <img src="IMG/parada3.svg" alt="Parada 3">
+    </section>
+
+    <section id="p4" class="parada" data-index="4">
+      <span class="label">PARADA 4</span>
+      <img src="IMG/parada4.svg" alt="Parada 4">
+    </section>
+  </main>
+
+  <button id="verBtn" class="btn btn-primary ver-btn pulse-btn">VER</button>
+
+  <div id="overlayRoot" style="display:none;"></div>
+
+<script>
+  const arrancarBtn = document.getElementById('arrancarBtn');
+  const truck = document.getElementById('truck');
+  const truckWrap = document.getElementById('truckWrap');
+  const audio = document.getElementById('cancion');
+  const paradas = Array.from(document.querySelectorAll('.parada'));
+  const verBtn = document.getElementById('verBtn');
+  const overlayRoot = document.getElementById('overlayRoot');
+
+  let animating = false;
+
+  function getTargetPosForIndex(i){
+    const parada = paradas[i];
+    const rect = parada.getBoundingClientRect();
+    const y = window.scrollY + rect.top + rect.height/2 - (truckWrap.offsetHeight/2);
+
+    const padding = 250;
+    const leftX = padding;
+    const rightX = Math.min(window.innerWidth - truckWrap.offsetWidth - padding, window.innerWidth * 0.6);
+    const x = (i % 2 === 0) ? leftX : rightX;
+
+    return {x,y};
+  }
+
+  function moveTruckTo(target, duration=1400){
+    return new Promise(resolve=>{
+      const startRect = truckWrap.getBoundingClientRect();
+      const startX = startRect.left + window.scrollX;
+      const startY = startRect.top + window.scrollY;
+      const deltaX = target.x - startX;
+      const deltaY = target.y - startY;
+      const startTime = performance.now();
+
+      function step(now){
+        const t = Math.min(1, (now - startTime)/duration);
+        const ease = t < .5 ? 2*t*t : -1 + (4 - 2*t)*t;
+        const curX = startX + deltaX * ease;
+        const curY = startY + deltaY * ease;
+
+        truckWrap.style.position = 'absolute';
+        truckWrap.style.left = curX + "px";
+        truckWrap.style.top = curY + "px";
+
+        if(t < 1) requestAnimationFrame(step);
+        else resolve();
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  function enableVerForIndex(i){
+    verBtn.style.display = 'inline-block';
+    verBtn.dataset.index = i;
+  }
+
+  function showOverlay(html){
+    overlayRoot.innerHTML = '';
+    overlayRoot.style.display = 'flex';
+
+    const div = document.createElement('div');
+    div.className = 'overlay';
+    div.innerHTML = `<div class="card p-4">${html}</div>`;
+
+    overlayRoot.appendChild(div);
+  }
+
+  function closeOverlay(){
+    overlayRoot.style.display = 'none';
+    overlayRoot.innerHTML = '';
+  }
+
+  async function startRoute(){
+    if(animating) return;
+    animating = true;
+
+    audio.currentTime = 0;
+    audio.play().catch(()=>{});
+
+    for(let i=0;i<paradas.length;i++){
+      await new Promise(r=>setTimeout(r,200));
+
+      const target = getTargetPosForIndex(i);
+
+      window.scrollTo({top: target.y - window.innerHeight/3, behavior:'smooth'});
+      await new Promise(r=>setTimeout(r,600));
+
+      await moveTruckTo(target, 1400);
+
+      enableVerForIndex(i);
+
+      await new Promise(resolve=>{
+        function onVer(){
+          showParadaOverlay(i+1).then(()=>{
+            verBtn.removeEventListener("click", onVer);
+            resolve();
+          });
+        }
+        verBtn.addEventListener("click", onVer);
+      });
+
+      verBtn.style.display = 'none';
+    }
+
+    animating = false;
+  }
+
+  async function showParadaOverlay(n){
+    return new Promise(resolve=>{
+      if(n < 4){
+        showOverlay(`
+          <div class="card-body text-center">
+            <h4>Esta es la parada ${n}</h4>
+            <button id="closeOverlayBtn" class="btn btn-secondary mt-3">Cerrar</button>
+          </div>
+        `);
+
+        document.getElementById("closeOverlayBtn").onclick = ()=>{
+          closeOverlay();
+          resolve();
+        };
+
+      } else {
+        showOverlay(`
+          <div class="card-body text-center">
+            <h4>¿Aceptas?</h4>
+            <div class="choice-wrap mt-3">
+              <button id="siBtn" class="btn btn-success btn-lg">SI</button>
+              <button id="noBtn" class="btn btn-danger btn-lg">NO</button>
+            </div>
+          </div>
+        `);
+
+        const siBtn = document.getElementById("siBtn");
+        const noBtn = document.getElementById("noBtn");
+
+        // SI redirige a final
+        siBtn.onclick = ()=> window.location.href = "final.html";
+
+        // NO se mueve dentro del contenedor .choice-wrap
+        noBtn.onclick = ()=> moveNoButtonInsideContainer(noBtn, siBtn);
+
+        // Resolvemos solo cuando el usuario haya cerrado la overlay (SI redirige y NO no resuelve)
+        // Para la secuencia del recorrido el resolve() no se necesita aquí; la promesa se resolverá
+        // cuando el flujo original espere a que el overlay se cierre (en este diseño, cerrar lo hace SI o recargar)
+      }
+    });
+  }
+
+  /**
+   * Mueve el botón `noBtn` SOLO dentro del contenedor padre `.choice-wrap`.
+   * Evita que se superponga al botón `siBtn`.
+   */
+  function moveNoButtonInsideContainer(noBtn, siBtn){
+    const container = noBtn.closest('.choice-wrap');
+    if(!container) return;
+
+    // el contenedor debe ser position:relative (en CSS ya está)
+    const containerRect = container.getBoundingClientRect();
+    const siRect = siBtn.getBoundingClientRect();
+    const noRect = noBtn.getBoundingClientRect();
+
+    // dimensiones relativas al contenedor (coordenadas interiores)
+    const siRel = {
+      left: siRect.left - containerRect.left,
+      top: siRect.top - containerRect.top,
+      right: siRect.right - containerRect.left,
+      bottom: siRect.bottom - containerRect.top,
+      width: siRect.width,
+      height: siRect.height
+    };
+
+    const btnW = noRect.width;
+    const btnH = noRect.height;
+    const padding = 6; // separación mínima desde los bordes del contenedor
+
+    const maxX = Math.max(0, containerRect.width - btnW - padding);
+    const maxY = Math.max(0, containerRect.height - btnH - padding);
+
+    // intenta varias veces encontrar posición que no se superponga con SI
+    let attempts = 0;
+    while(attempts < 100){
+      attempts++;
+      const x = Math.floor(Math.random() * (maxX + 1)) + padding;
+      const y = Math.floor(Math.random() * (maxY + 1)) + padding;
+
+      // rect propuesto relativo al contenedor
+      const propLeft = x;
+      const propTop = y;
+      const propRight = x + btnW;
+      const propBottom = y + btnH;
+
+      // comprobar overlap con siRel
+      const overlap = !(propRight < siRel.left || propLeft > siRel.right || propBottom < siRel.top || propTop > siRel.bottom);
+
+      if(!overlap){
+        // aplicar: posicion absoluta dentro del contenedor
+        noBtn.style.position = 'absolute';
+        noBtn.style.left = `${propLeft}px`;
+        noBtn.style.top = `${propTop}px`;
+        return;
+      }
+    }
+
+    // Si no encuentra posición (caso raro), colocar al lado derecho sin superponer (fallback)
+    noBtn.style.position = 'absolute';
+    const fallbackX = Math.min(maxX, siRel.right + 8);
+    const fallbackY = Math.min(maxY, siRel.top);
+    noBtn.style.left = `${fallbackX}px`;
+    noBtn.style.top = `${fallbackY}px`;
+  }
+
+  arrancarBtn.onclick = startRoute;
+</script>
+
+</body>
+</html>
